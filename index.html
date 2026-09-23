@@ -52,7 +52,6 @@
             word-wrap: break-word;
         }
 
-        /* Giao diện nút kích hoạt bắt buộc tuân thủ quy tắc trình duyệt */
         .start-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -78,7 +77,6 @@
 </head>
 <body>
 
-    <!-- Màn hình kích hoạt bắt buộc của trình duyệt -->
     <div id="overlay" class="start-overlay">
         <button class="start-btn" onclick="activateSystem()">BẮT ĐẦU DỊCH 🎙️</button>
     </div>
@@ -94,9 +92,8 @@
         let recognition;
         let isSystemRunning = false;
 
-        // Bắt buộc kích hoạt qua hành động nhấn nút của người dùng
         function activateSystem() {
-            overlay.style.display = 'none'; // Ẩn màn hình chờ đi
+            overlay.style.display = 'none';
             isSystemRunning = true;
             initSpeech();
         }
@@ -113,8 +110,8 @@
             }
 
             recognition = new SpeechRecognition();
-            recognition.lang = 'en-US'; // Ngôn ngữ nhận diện đầu vào: Tiếng Anh
-            recognition.continuous = false; // Thiết lập false để ngắt câu ngắn gọn giúp đẩy API dịch nhanh
+            recognition.lang = 'en-US'; 
+            recognition.continuous = false; 
             recognition.interimResults = true;
 
             recognition.onstart = function() {
@@ -146,12 +143,17 @@
 
             async function fetchTranslation(text) {
                 try {
-                    const res = await fetch(`https://translated.net{encodeURIComponent(text)}&langpair=en|vi`);
+                    // SỬA LỖI TẠI ĐÂY: Thay đổi cấu trúc gọi URL chính xác và dùng phép nối chuỗi dấu cộng (+)
+                    var url = "https://translated.net" + encodeURIComponent(text) + "&langpair=en|vi";
+                    
+                    const res = await fetch(url);
                     const data = await res.json();
                     
-                    transcriptDiv.style.color = "#00ff00";
-                    transcriptDiv.style.textShadow = "0 0 12px rgba(0, 255, 0, 0.6)";
-                    transcriptDiv.innerText = data.responseData.translatedText;
+                    if (data && data.responseData) {
+                        transcriptDiv.style.color = "#00ff00";
+                        transcriptDiv.style.textShadow = "0 0 12px rgba(0, 255, 0, 0.6)";
+                        transcriptDiv.innerText = data.responseData.translatedText;
+                    }
                 } catch (error) {
                     console.log("Lỗi kết nối dịch thuật công cộng.");
                 }
@@ -159,9 +161,8 @@
 
             recognition.onerror = function(event) {
                 console.log("Speech Error:", event.error);
-                // Xử lý triệt để trạng thái lỗi 'aborted' hoặc 'no-speech'
                 if (event.error === 'aborted' || event.error === 'no-speech') {
-                    // Không báo lỗi đỏ lên màn hình kính HUD, âm thầm chuẩn bị khởi động lại
+                    // Âm thầm xử lý lỗi để tự khởi động lại vòng lặp micro mượt mà
                 } else if (event.error === 'not-allowed') {
                     transcriptDiv.style.color = "#ff3333";
                     transcriptDiv.innerText = "Lỗi: Hãy cấp quyền Micro cho trình duyệt!";
@@ -170,7 +171,6 @@
             };
 
             recognition.onend = function() {
-                // Khi micro dừng tự nhiên hoặc bị ép dừng, khởi động lại ngay sau 200ms để dịch liên tục
                 if (isSystemRunning) {
                     setTimeout(() => {
                         try {
