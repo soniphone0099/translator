@@ -15,178 +15,85 @@
             flex-direction: column;
             height: 100vh;
             box-sizing: border-box;
-            justify-content: space-between;
-            align-items: center;
         }
-        .header {
-            font-size: 13px;
-            color: #00ffcc;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-top: 5px;
-            text-align: center;
-        }
-        /* Màn hình hiển thị chữ Tiếng Việt cực lớn, ẩn hoàn toàn tiếng Anh */
-        .output-box {
-            flex: 1;
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            font-size: 28px;
-            color: #00ffcc;
-            line-height: 1.4;
-            font-weight: bold;
-            padding: 10px;
-            word-break: break-word;
-        }
-        .control-btn {
-            background: #0066cc;
-            color: #fff;
-            border: none;
-            border-radius: 12px;
-            padding: 16px 24px;
+        h2 {
             font-size: 18px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            max-width: 320px;
             margin-bottom: 10px;
-            box-shadow: 0 4px 12px rgba(0, 102, 204, 0.4);
+            color: #00ffcc;
+            text-align: center;
         }
-        .control-btn.listening {
-            background: #cc0000;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        #transcript {
+            flex: 1;
+            background-color: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 16px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.4;
         }
     </style>
 </head>
 <body>
 
-    <div class="header" id="statusHeader">TRẠNG THÁI: SẴN SÀNG</div>
-
-    <!-- Khung hiển thị nội dung tiếng Việt trên kính -->
-    <div class="output-box" id="outputText">Bấm nút bên dưới để bắt đầu nghe người đối diện...</div>
-
-    <button class="control-btn" id="mainBtn" onclick="toggleTranslation()">🎤 Bắt đầu phiên dịch</button>
+    <h2>Đang Phiên Dịch Trực Tiếp...</h2>
+    <div id="transcript">Đang lắng nghe âm thanh để dịch...</div>
 
     <script>
-        const statusHeader = document.getElementById('statusHeader');
-        const outputText = document.getElementById('outputText');
-        const mainBtn = document.getElementById('mainBtn');
-        
-        let recognition = null;
-        let isRunning = false;
+        // Tự động kích hoạt nhận diện giọng nói và dịch ngay khi mở trang
+        const transcriptDiv = document.getElementById('transcript');
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        function startAutoTranslate() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                transcriptDiv.innerText = "Trình duyệt của kính không hỗ trợ nhận diện giọng nói.";
+                return;
+            }
 
-        if (!SpeechRecognition) {
-            outputText.innerText = "Trình duyệt không hỗ trợ nhận diện giọng nói!";
-            mainBtn.disabled = true;
-        } else {
-            recognition = new SpeechRecognition();
-            recognition.lang = 'en-US'; // Chuyên thu âm tiếng Anh của người đối diện
-            recognition.interimResults = false;
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US'; // Ngôn ngữ nguồn cần dịch (ví dụ: Tiếng Anh)
             recognition.continuous = true;
+            recognition.interimResults = true;
 
             recognition.onstart = function() {
-                isRunning = true;
-                statusHeader.innerText = "🟢 Đang nghe tiếng Anh từ đối phương...";
-                mainBtn.innerText = "⏹ Dừng phiên dịch";
-                mainBtn.classList.add("listening");
-                outputText.innerText = "Đang chờ đối phương nói...";
+                transcriptDiv.innerText = "Đang nghe... (Hãy nói để dịch)";
             };
 
             recognition.onresult = function(event) {
-                const englishText = event.results[event.results.length - 1][0].transcript.trim();
-                if (englishText) {
-                    processTranslation(englishText);
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                if (finalTranscript) {
+                    transcriptDiv.innerText = "Dịch: " + finalTranscript;
                 }
             };
 
             recognition.onerror = function(event) {
-                console.log("Lỗi mic:", event.error);
-                if (event.error === 'not-allowed') {
-                    statusHeader.innerText = "🔴 LỖI: CHƯA CẤP QUYỀN MICRO";
-                    outputText.innerText = "Vui lòng mở trang web ở tab độc lập (Debug) và chọn Cho phép Micro.";
-                    stopAll();
-                }
+                transcriptDiv.innerText = "Lỗi: " + event.error + ". Đang thử kết nối lại...";
+                setTimeout(() => recognition.start(), 1000);
             };
 
             recognition.onend = function() {
-                if (isRunning) {
-                    try { recognition.start(); } catch(e) {}
-                }
-            };
-        }
-
-        function toggleTranslation() {
-            if (isRunning) {
-                stopAll();
-            } else {
-                startMic();
-            }
-        }
-
-        function startMic() {
-            try {
+                // Tự động khởi động lại nếu ngắt quãng để dịch liên tục không cần bấm nút
                 recognition.start();
-            } catch (e) {
-                outputText.innerText = "Không thể bật micro. Hãy chắc chắn bạn đã mở trang ở tab riêng!";
-            }
+            };
+
+            recognition.start();
         }
 
-        function stopAll() {
-            isRunning = false;
-            try { recognition.stop(); } catch(e) {}
-            statusHeader.innerText = "TRẠNG THÁI: ĐÃ DỪNG";
-            mainBtn.innerText = "🎤 Bắt đầu phiên dịch";
-            mainBtn.classList.remove("listening");
-        }
-
-        function processTranslation(text) {
-            outputText.innerText = "Đang dịch...";
-
-            // Dịch ngầm sang tiếng Việt chuẩn xác bằng Google Translate API
-            const url = https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=vi&dt=t&q= + encodeURIComponent(text);
-            
-            fetch(url)
-                .then(response => response.json())
-                .then(data => {
-                    let translatedText = "";
-                    if (data && data[0]) {
-                        data[0].forEach(item => {
-                            if (item[0]) translatedText += item[0];
-                        });
-                    }
-                    
-                    const finalVi = translatedText || "Không thể dịch.";
-                    
-                    // Chỉ hiển thị duy nhất tiếng Việt cỡ lớn lên tròng kính
-                    outputText.innerText = finalVi;
-                    
-                    // Tự động phát âm thanh tiếng Việt vào tai qua gọng kính
-                    speakVietnamese(finalVi);
-                })
-                .catch(err => {
-                    outputText.innerText = "Lỗi kết nối dịch!";
-                });
-        }
-
-        function speakVietnamese(text) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'vi-VN'; // Giọng đọc chuẩn tiếng Việt
-                utterance.rate = 1.0;     // Tốc độ đọc tự nhiên
-                window.speechSynthesis.speak(utterance);
-            }
-        }
+        // Chạy ngay khi tải xong trang
+        window.addEventListener('DOMContentLoaded', () => {
+            startAutoTranslate();
+        });
     </script>
 </body>
 </html>
