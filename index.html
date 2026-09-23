@@ -3,190 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phiên Dịch HUD Kính Ray-Ban</title>
+    <title>Phiên Dịch Tiếng Việt Trên Máy Tính</title>
     <style>
         body {
-            background-color: #000000;
-            color: #ffffff;
-            font-family: 'Arial', sans-serif;
+            background-color: #000;
+            color: #fff;
+            font-family: sans-serif;
             margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-            box-sizing: border-box;
-        }
-
-        .hud-container {
-            width: 100vw;
-            height: 100vh;
-            max-width: 600px;
-            max-height: 600px;
+            padding: 16px;
             display: flex;
             flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
             justify-content: center;
             align-items: center;
-            padding: 30px;
-            box-sizing: border-box;
             text-align: center;
         }
-
-        h2 {
-            font-size: 16px;
-            color: #00ffcc;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 30px;
-            opacity: 0.7;
-        }
-
-        #transcript {
-            font-size: 42px; 
-            font-weight: bold;
-            line-height: 1.4;
-            color: #00ff00; 
-            text-shadow: 0 0 12px rgba(0, 255, 0, 0.6);
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-
-        .start-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 999;
-        }
-
-        .start-btn {
-            padding: 20px 40px;
-            font-size: 24px;
-            font-weight: bold;
-            background-color: #00ff00;
+        #startBtn {
+            background-color: #00ffcc;
             color: #000;
             border: none;
-            border-radius: 50px;
+            padding: 15px 30px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+            margin-bottom: 20px;
+        }
+        #transcript {
+            width: 100%;
+            max-width: 500px;
+            height: 220px;
+            background-color: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 22px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        .translated {
+            color: #00ffcc;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <div id="overlay" class="start-overlay">
-        <button class="start-btn" onclick="activateSystem()">BẮT ĐẦU DỊCH 🎙️</button>
-    </div>
-
-    <div class="hud-container">
-        <h2>• LIVE TRANSLATE •</h2>
-        <div id="transcript">Hệ thống đã sẵn sàng. Hãy nói...</div>
+    <button id="startBtn" onclick="initSpeech()">Bấm để Bắt Đầu Dịch</button>
+    <div id="transcript">
+        <div class="translated">Đang chờ bật phiên dịch...</div>
     </div>
 
     <script>
         const transcriptDiv = document.getElementById('transcript');
-        const overlay = document.getElementById('overlay');
-        let recognition;
-        let isSystemRunning = false;
+        const startBtn = document.getElementById('startBtn');
+        let recognition = null;
+        let isRunning = false;
+        let lastSpokenText = "";
+        let voices = [];
 
-        function activateSystem() {
-            overlay.style.display = 'none';
-            isSystemRunning = true;
-            initSpeech();
+        // Tải sẵn danh sách giọng đọc của trình duyệt máy tính
+        function loadVoices() {
+            if (window.speechSynthesis) {
+                voices = window.speechSynthesis.getVoices();
+            }
+        }
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+            loadVoices();
         }
 
         function initSpeech() {
-            if (!isSystemRunning) return;
-
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                transcriptDiv.style.color = "#ff3333";
-                transcriptDiv.style.textShadow = "none";
-                transcriptDiv.innerText = "Trình duyệt không hỗ trợ Web Speech API.";
+                transcriptDiv.innerHTML = "<div class='translated'>Trình duyệt máy tính không hỗ trợ nhận diện giọng nói.</div>";
                 return;
             }
 
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+
             recognition = new SpeechRecognition();
-            recognition.lang = 'en-US'; 
-            recognition.continuous = false; 
+            recognition.lang = 'en-US'; // Ngôn ngữ nguồn cần nghe (Ví dụ: Tiếng Anh)
+            recognition.continuous = true;
             recognition.interimResults = true;
 
             recognition.onstart = function() {
-                console.log("Micro đang lắng nghe...");
+                isRunning = true;
+                startBtn.style.display = 'none';
+                transcriptDiv.innerHTML = "<div class='translated'>Đang lắng nghe trên máy tính...</div>";
             };
 
-            recognition.onresult = function(event) {
-                let interimTranscript = '';
-                let finalTranscript = '';
+            recognition.onresult = async function(event) {
+                let finalText = '';
 
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
+                        finalText += event.results[i][0].transcript;
                     }
                 }
 
-                if (interimTranscript) {
-                    transcriptDiv.style.color = "#888888";
-                    transcriptDiv.style.textShadow = "none";
-                    transcriptDiv.innerText = interimTranscript;
-                }
+                if (finalText.trim()) {
+                    let translatedText = await translateToVietnamese(finalText);
+                    
+                    // Hiển thị tiếng Việt lên màn hình
+                    transcriptDiv.innerHTML = `<div class="translated">${translatedText}</div>`;
 
-                if (finalTranscript) {
-                    fetchTranslation(finalTranscript);
+                    // Đọc bằng giọng tiếng Việt chuẩn của máy tính
+                    speakVietnamese(translatedText);
                 }
             };
 
-            async function fetchTranslation(text) {
-                try {
-                    // SỬA LỖI TẠI ĐÂY: Thay đổi cấu trúc gọi URL chính xác và dùng phép nối chuỗi dấu cộng (+)
-                    var url = "https://translated.net" + encodeURIComponent(text) + "&langpair=en|vi";
-                    
-                    const res = await fetch(url);
-                    const data = await res.json();
-                    
-                    if (data && data.responseData) {
-                        transcriptDiv.style.color = "#00ff00";
-                        transcriptDiv.style.textShadow = "0 0 12px rgba(0, 255, 0, 0.6)";
-                        transcriptDiv.innerText = data.responseData.translatedText;
-                    }
-                } catch (error) {
-                    console.log("Lỗi kết nối dịch thuật công cộng.");
-                }
-            }
-
             recognition.onerror = function(event) {
-                console.log("Speech Error:", event.error);
                 if (event.error === 'aborted' || event.error === 'no-speech') {
-                    // Âm thầm xử lý lỗi để tự khởi động lại vòng lặp micro mượt mà
-                } else if (event.error === 'not-allowed') {
-                    transcriptDiv.style.color = "#ff3333";
-                    transcriptDiv.innerText = "Lỗi: Hãy cấp quyền Micro cho trình duyệt!";
-                    isSystemRunning = false; 
+                    return;
                 }
             };
 
             recognition.onend = function() {
-                if (isSystemRunning) {
+                if (isRunning) {
                     setTimeout(() => {
-                        try {
-                            recognition.start();
-                        } catch (e) {
-                            console.log("Đang thử kết nối lại micro...");
-                        }
-                    }, 200);
+                        try { recognition.start(); } catch (e) { setTimeout(initSpeech, 1000); }
+                    }, 300);
                 }
             };
 
             try {
                 recognition.start();
-            } catch (e) {
-                console.error("Không thể khởi động Microphone ban đầu:", e);
+            } catch (e) {}
+        }
+
+        // Hàm dịch sang tiếng Việt
+        async function translateToVietnamese(text) {
+            try {
+                let url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=` + encodeURIComponent(text);
+                let response = await fetch(url);
+                let data = await response.json();
+                let translation = data[0].map(item => item[0]).join('');
+                return translation;
+            } catch (error) {
+                return text;
             }
+        }
+
+        // Hàm phát âm thanh Tiếng Việt chuẩn trên máy tính
+        function speakVietnamese(text) {
+            if (!window.speechSynthesis) return;
+            if (text === lastSpokenText) return;
+            lastSpokenText = text;
+
+            window.speechSynthesis.cancel(); // Dừng câu cũ
+
+            let utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'vi-VN';
+            utterance.rate = 1.0;
+
+            // Tìm chính xác giọng tiếng Việt trên Windows/Mac của bạn
+            if (voices.length === 0) {
+                voices = window.speechSynthesis.getVoices();
+            }
+            let viVoice = voices.find(v => v.lang === 'vi-VN' || v.lang.toLowerCase().includes('vi'));
+            if (viVoice) {
+                utterance.voice = viVoice;
+            }
+
+            window.speechSynthesis.speak(utterance);
         }
     </script>
 </body>
