@@ -3,61 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phiên Dịch Trực Tiếp Cho Kính</title>
+    <title>Phiên Dịch HUD Cho Kính</title>
     <style>
+        /* Thiết lập nền đen tuyệt đối để màn hình kính hiển thị dạng trong suốt */
         body {
-            background-color: #000;
-            color: #fff;
-            font-family: sans-serif;
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
             margin: 0;
-            padding: 16px;
+            padding: 0;
             display: flex;
-            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             height: 100vh;
+            overflow: hidden;
             box-sizing: border-box;
         }
-        h2 {
-            font-size: 18px;
-            margin-bottom: 10px;
-            color: #00ffcc;
+
+        .hud-container {
+            width: 100vw;
+            height: 100vh;
+            max-width: 600px; /* Tối ưu độ phân giải hiển thị của kính */
+            max-height: 600px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+            box-sizing: border-box;
             text-align: center;
         }
+
+        h2 {
+            font-size: 18px;
+            margin-bottom: 30px;
+            color: #00ffcc; /* Màu trạng thái hệ thống */
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0.7;
+        }
+
+        /* Chữ dịch siêu lớn màu Xanh Neon, tương phản cao nhìn rõ ngoài trời */
         #transcript {
-            flex: 1;
-            background-color: #111;
-            border: 1px solid #333;
-            border-radius: 8px;
-            padding: 12px;
-            font-size: 16px;
-            overflow-y: auto;
-            white-space: pre-wrap;
+            font-size: 42px; 
+            font-weight: bold;
             line-height: 1.4;
+            color: #00ff00; /* Xanh Neon phản quang */
+            text-shadow: 0 0 12px rgba(0, 255, 0, 0.6);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            transition: color 0.2s ease, text-shadow 0.2s ease;
         }
     </style>
 </head>
 <body>
 
-    <h2>Đang Phiên Dịch Trực Tiếp...</h2>
-    <div id="transcript">Đang lắng nghe âm thanh để dịch...</div>
+    <div class="hud-container">
+        <h2>• LIVE TRANSLATE •</h2>
+        <div id="transcript">Đang kích hoạt micro...</div>
+    </div>
 
     <script>
-        // Tự động kích hoạt nhận diện giọng nói và dịch ngay khi mở trang
         const transcriptDiv = document.getElementById('transcript');
+        let autoRestart = true;
 
         function startAutoTranslate() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                transcriptDiv.innerText = "Trình duyệt của kính không hỗ trợ nhận diện giọng nói.";
+                transcriptDiv.style.color = "#ff3333";
+                transcriptDiv.style.textShadow = "none";
+                transcriptDiv.innerText = "Trình duyệt không hỗ trợ nhận diện giọng nói.";
                 return;
             }
 
             const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US'; // Ngôn ngữ nguồn cần dịch (ví dụ: Tiếng Anh)
-            recognition.continuous = true;
-            recognition.interimResults = true;
+            recognition.lang = 'en-US';       // Ngôn ngữ nghe vào: Tiếng Anh
+            recognition.continuous = false;    // Ngắt theo câu ngắn để dịch tức thì
+            recognition.interimResults = true; // Bật hiển thị chữ tạm thời khi đang nói
 
             recognition.onstart = function() {
-                transcriptDiv.innerText = "Đang nghe... (Hãy nói để dịch)";
+                if (transcriptDiv.innerText === "Đang kích hoạt micro...") {
+                    transcriptDiv.style.color = "#888888";
+                    transcriptDiv.style.textShadow = "none";
+                    transcriptDiv.innerText = "Listening... 🎙️";
+                }
             };
 
             recognition.onresult = function(event) {
@@ -72,28 +101,61 @@
                     }
                 }
 
+                // Khi đang nói: Hiện chữ tiếng Anh mờ để biết hệ thống đang xử lý
+                if (interimTranscript) {
+                    transcriptDiv.style.color = "#888888";
+                    transcriptDiv.style.textShadow = "none";
+                    transcriptDiv.innerText = interimTranscript;
+                }
+
+                // Khi dừng nói: Gọi API dịch câu hoàn chỉnh sang tiếng Việt
                 if (finalTranscript) {
-                    transcriptDiv.innerText = "Dịch: " + finalTranscript;
+                    fetchTranslation(finalTranscript);
                 }
             };
 
+            // Gọi API dịch thuật miễn phí MyMemory (Không cần Token/Key)
+            async function fetchTranslation(text) {
+                transcriptDiv.style.color = "#00ffcc";
+                transcriptDiv.style.textShadow = "none";
+                transcriptDiv.innerText = "Translating...";
+                
+                try {
+                    const res = await fetch(`https://translated.net{encodeURIComponent(text)}&langpair=en|vi`);
+                    const data = await res.json();
+                    
+                    // Hiển thị kết quả dịch chữ Xanh Neon phát sáng lên kính
+                    transcriptDiv.style.color = "#00ff00";
+                    transcriptDiv.style.textShadow = "0 0 12px rgba(0, 255, 0, 0.6)";
+                    transcriptDiv.innerText = data.responseData.translatedText;
+                } catch (error) {
+                    transcriptDiv.style.color = "#ff3333";
+                    transcriptDiv.style.textShadow = "none";
+                    transcriptDiv.innerText = "Lỗi kết nối dịch!";
+                }
+            }
+
             recognition.onerror = function(event) {
-                transcriptDiv.innerText = "Lỗi: " + event.error + ". Đang thử kết nối lại...";
-                setTimeout(() => recognition.start(), 1000);
+                // Bỏ qua lỗi không nghe thấy tiếng (no-speech) để tránh báo đỏ màn hình liên tục
+                if (event.error !== 'no-speech') {
+                    transcriptDiv.style.color = "#ff3333";
+                    transcriptDiv.style.textShadow = "none";
+                    transcriptDiv.innerText = "Lỗi micro: " + event.error;
+                }
             };
 
+            // Vòng lặp vô hạn: Tự động mở lại micro ngay khi kết thúc để tiếp tục nghe câu mới
             recognition.onend = function() {
-                // Tự động khởi động lại nếu ngắt quãng để dịch liên tục không cần bấm nút
-                recognition.start();
+                if (autoRestart) {
+                    recognition.start();
+                }
             };
 
             recognition.start();
         }
 
-        // Chạy ngay khi tải xong trang
-        window.addEventListener('DOMContentLoaded', () => {
-            startAutoTranslate();
-        });
+        // Tự động chạy ngay khi trang web tải xong
+        window.addEventListener('DOMContentLoaded', startAutoTranslate);
     </script>
 </body>
 </html>
