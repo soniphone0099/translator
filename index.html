@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chẩn Đoán Lỗi Trên Kính</title>
+    <title>Phiên Dịch Trên Kính</title>
     <style>
         body {
             background-color: #000;
@@ -19,6 +19,30 @@
             align-items: center;
             text-align: center;
         }
+        #touchOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+            cursor: pointer;
+        }
+        #touchBtn {
+            background-color: #00ffcc;
+            color: #000;
+            border: none;
+            padding: 20px 40px;
+            font-size: 20px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+        }
         #transcript {
             width: 100%;
             max-width: 500px;
@@ -27,7 +51,7 @@
             border: 1px solid #333;
             border-radius: 8px;
             padding: 16px;
-            font-size: 20px;
+            font-size: 22px;
             overflow-y: auto;
             white-space: pre-wrap;
             line-height: 1.5;
@@ -37,80 +61,93 @@
             box-sizing: border-box;
         }
         .translated {
-            color: #ff3333;
+            color: #00ffcc;
             font-weight: bold;
         }
     </style>
 </head>
 <body>
 
+    <!-- Lớp phủ bắt buộc chạm 1 lần để mở khóa micro trên kính -->
+    <div id="touchOverlay" onclick="startApp()">
+        <button id="touchBtn">Chạm vào đây để Bắt Đầu</button>
+        <p style="color: #888; margin-top: 15px; font-size: 14px;">(Yêu cầu tương tác 1 lần để bật micro)</p>
+    </div>
+
     <div id="transcript">
-        <div id="status" class="translated">Đang kiểm tra trình duyệt của kính...</div>
+        <div class="translated">Đang chờ kích hoạt...</div>
     </div>
 
     <script>
-        const statusDiv = document.getElementById('status');
+        const transcriptDiv = document.getElementById('transcript');
+        const touchOverlay = document.getElementById('touchOverlay');
         let recognition = null;
-        let isRunning = true;
+        let isRunning = false;
+        let lastSpokenText = "";
 
-        window.addEventListener('DOMContentLoaded', () => {
-            initAutoSpeech();
-        });
+        function startApp() {
+            // Ẩn lớp nút bấm đi sau khi chạm
+            touchOverlay.style.display = 'none';
+            isRunning = true;
+            initSpeech();
+        }
 
-        function initAutoSpeech() {
+        function initSpeech() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            // Kiểm tra xem trình duyệt trên kính có hỗ trợ nhận diện giọng nói không
             if (!SpeechRecognition) {
-                statusDiv.innerText = "Lỗi: Trình duyệt của kính KHÔNG hỗ trợ Web Speech API!";
+                transcriptDiv.innerHTML = "<div class='translated'>Trình duyệt của kính không hỗ trợ nhận diện giọng nói.</div>";
                 return;
             }
 
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US'; // Ngôn ngữ nguồn cần nghe (Tiếng Anh)
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onstart = function() {
+                transcriptDiv.innerHTML = "<div class='translated'>Đang lắng nghe trực tiếp...</div>";
+            };
+
+            recognition.onresult = async function(event) {
+                let finalText = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalText += event.results[i][0].transcript;
+                    }
+                }
+
+                if (finalText.trim()) {
+                    let translatedText = await translateToVietnamese(finalText);
+                    
+                    // Hiển thị tiếng Việt lên màn hình kính
+                    transcriptDiv.innerHTML = `<div class="translated">${translatedText}</div>`;
+
+                    // Phát âm thanh giọng nữ tiếng Việt chuẩn Google
+                    playGoogleFemaleVoice(translatedText);
+                }
+            };
+
+            recognition.onerror = function(event) {
+                console.log("Lỗi micro: ", event.error);
+            };
+
+            recognition.onend = function() {
+                if (isRunning) {
+                    // Tự động kết nối lại ngay lập tức khi micro ngắt quãng
+                    setTimeout(() => {
+                        try { recognition.start(); } catch (e) {}
+                    }, 300);
+                }
+            };
+
             try {
-                recognition = new SpeechRecognition();
-                recognition.lang = 'en-US';
-                recognition.continuous = true;
-                recognition.interimResults = true;
-
-                recognition.onstart = function() {
-                    statusDiv.style.color = "#00ffcc";
-                    statusDiv.innerText = "Đang kết nối micro thành công trên kính. Hãy nói thử...";
-                };
-
-                recognition.onresult = async function(event) {
-                    let finalText = '';
-                    for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                            finalText += event.results[i][0].transcript;
-                        }
-                    }
-
-                    if (finalText.trim()) {
-                        let translatedText = await translateToVietnamese(finalText);
-                        statusDiv.style.color = "#00ffcc";
-                        statusDiv.innerText = translatedText;
-                        playGoogleFemaleVoice(translatedText);
-                    }
-                };
-
-                recognition.onerror = function(event) {
-                    // Hiển thị chính xác lỗi mà kính đang gặp phải lên màn hình
-                    statusDiv.style.color = "#ff3333";
-                    statusDiv.innerText = "Lỗi từ kính: " + event.error;
-                };
-
-                recognition.onend = function() {
-                    if (isRunning) {
-                        setTimeout(() => {
-                            try { recognition.start(); } catch (e) {}
-                        }, 1000);
-                    }
-                };
-
                 recognition.start();
-
             } catch (e) {
-                statusDiv.innerText = "Lỗi khởi tạo: " + e.message;
+                transcriptDiv.innerHTML = "<div class='translated'>Không thể khởi động micro: " + e.message + "</div>";
             }
         }
 
@@ -126,6 +163,9 @@
         }
 
         function playGoogleFemaleVoice(text) {
+            if (text === lastSpokenText) return;
+            lastSpokenText = text;
+
             let audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=` + encodeURIComponent(text) + `&tl=vi&client=tw-ob`;
             let audio = new Audio(audioUrl);
             audio.play().catch(e => {});
