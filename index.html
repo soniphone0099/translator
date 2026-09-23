@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phiên Dịch Bằng Bàn Phím Cho Kính</title>
+    <title>Phiên Dịch Tự Động Điện Thoại & Kính</title>
     <style>
         body {
             background-color: #000;
@@ -19,34 +19,15 @@
             align-items: center;
             text-align: center;
         }
-        #inputContainer {
-            margin-bottom: 20px;
-            width: 100%;
-            max-width: 500px;
-        }
-        input[type="text"] {
-            width: 100%;
-            padding: 14px;
-            font-size: 18px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            background-color: #111;
-            color: #fff;
-            box-sizing: border-box;
-            outline: none;
-        }
-        input[type="text"]:focus {
-            border-color: #00ffcc;
-        }
         #transcript {
             width: 100%;
             max-width: 500px;
-            min-height: 180px;
+            min-height: 250px;
             background-color: #111;
             border: 1px solid #333;
             border-radius: 8px;
             padding: 16px;
-            font-size: 24px;
+            font-size: 26px;
             overflow-y: auto;
             white-space: pre-wrap;
             line-height: 1.5;
@@ -63,44 +44,85 @@
 </head>
 <body>
 
-    <div id="inputContainer">
-        <input type="text" id="textInput" placeholder="Nhập từ/câu cần dịch và bấm Enter..." autofocus onkeydown="checkEnter(event)">
-    </div>
-
     <div id="transcript">
-        <div class="translated">Đang chờ nhập nội dung...</div>
+        <div class="translated">Đang chờ tín hiệu phiên dịch...</div>
     </div>
 
     <script>
         const transcriptDiv = document.getElementById('transcript');
-        const textInput = document.getElementById('textInput');
-        let lastSpokenText = "";
+        let recognition = null;
+        let isRunning = true;
+        let lastSyncedText = "";
 
-        // Bắt sự kiện bấm phím Enter để dịch ngay lập tức
-        function checkEnter(event) {
-            if (event.key === 'Enter') {
-                let text = textInput.value.trim();
-                if (text) {
-                    processTranslation(text);
-                    textInput.value = ''; // Xóa ô nhập sau khi gửi
+        // Tự động kích hoạt ngay khi mở trang web
+        window.addEventListener('DOMContentLoaded', () => {
+            // Thử khởi động nhận diện giọng nói tự động (dành cho điện thoại Samsung)
+            initAutoMic();
+        });
+
+        function initAutoMic() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                // Nếu trình duyệt trên kính không hỗ trợ micro thì chuyển sang chế độ nhận đồng bộ từ thiết bị khác
+                return;
+            }
+
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.lang = 'en-US'; // Ngôn ngữ nguồn cần nghe (Tiếng Anh)
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onstart = function() {
+                transcriptDiv.innerHTML = "<div class='translated'>Đang lắng nghe tiếng Anh...</div>";
+            };
+
+            recognition.onresult = async function(event) {
+                let finalText = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalText += event.results[i][0].transcript;
+                    }
                 }
+
+                if (finalText.trim()) {
+                    let translatedText = await translateToVietnamese(finalText);
+                    
+                    // Lưu vào LocalStorage để đồng bộ tự động sang kính
+                    localStorage.setItem('live_translation', translatedText);
+                    
+                    // Hiển thị và phát âm thanh ngay lập tức trên thiết bị phát
+                    displayAndSpeak(translatedText);
+                }
+            };
+
+            recognition.onerror = function(event) {
+                // Bỏ qua lỗi ngắt quãng để tự động kết nối lại
+            };
+
+            recognition.onend = function() {
+                if (isRunning) {
+                    setTimeout(() => {
+                        try { recognition.start(); } catch (e) { setTimeout(initAutoMic, 1000); }
+                    }, 300);
+                }
+            };
+
+            // Tự động bật micro ngay khi mở trang
+            try {
+                recognition.start();
+            } catch (e) {
+                // Nếu trình duyệt yêu cầu chạm màn hình lần đầu để cấp quyền micro
+                window.addEventListener('click', () => {
+                    try { recognition.start(); } catch (err) {}
+                }, { once: true });
             }
         }
 
-        // Hàm dịch và phát âm thanh
-        async function processTranslation(inputText) {
-            transcriptDiv.innerHTML = `<div class="translated">Đang dịch...</div>`;
-            
-            let translatedText = await translateToVietnamese(inputText);
-            
-            // Hiển thị kết quả tiếng Việt lên màn hình kính
-            transcriptDiv.innerHTML = `<div class="translated">${translatedText}</div>`;
-
-            // Phát âm thanh giọng nữ tiếng Việt chuẩn Google
-            playGoogleFemaleVoice(translatedText);
-        }
-
-        // Gọi Google Translate API để dịch tự động sang tiếng Việt
+        // Hàm dịch sang tiếng Việt qua Google API
         async function translateToVietnamese(text) {
             try {
                 let url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=vi&dt=t&q=` + encodeURIComponent(text);
@@ -112,15 +134,27 @@
             }
         }
 
-        // Phát âm thanh chuẩn giọng nữ tiếng Việt
-        function playGoogleFemaleVoice(text) {
-            if (text === lastSpokenText) return;
-            lastSpokenText = text;
+        // Hiển thị chữ và phát giọng nữ tiếng Việt
+        function displayAndSpeak(text) {
+            if (text === lastSyncedText) return;
+            lastSyncedText = text;
 
+            // Hiển thị chữ tiếng Việt to rõ
+            transcriptDiv.innerHTML = `<div class="translated">${text}</div>`;
+
+            // Phát âm thanh giọng nữ chuẩn Google
             let audioUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=` + encodeURIComponent(text) + `&tl=vi&client=tw-ob`;
             let audio = new Audio(audioUrl);
-            audio.play().catch(e => console.log("Không phát được âm thanh: ", e));
+            audio.play().catch(e => {});
         }
+
+        // Tự động quét liên tục để đồng bộ nội dung từ điện thoại sang kính
+        setInterval(() => {
+            let cloudText = localStorage.getItem('live_translation');
+            if (cloudText && cloudText !== lastSyncedText) {
+                displayAndSpeak(cloudText);
+            }
+        }, 300);
     </script>
 </body>
 </html>
