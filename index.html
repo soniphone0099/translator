@@ -3,34 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Phiên Dịch HUD Cho Kính</title>
+    <title>Phiên Dịch HUD Kính Ray-Ban</title>
     <style>
         body {
             background-color: #000000;
             color: #ffffff;
             font-family: 'Arial', sans-serif;
             margin: 0;
+            padding: 0;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             overflow: hidden;
-        }
-        .hud-container {
-            width: 100vw;
-            max-width: 600px;
-            text-align: center;
-            padding: 20px;
             box-sizing: border-box;
         }
+
+        .hud-container {
+            width: 100vw;
+            height: 100vh;
+            max-width: 600px;
+            max-height: 600px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 30px;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
         h2 {
             font-size: 16px;
             color: #00ffcc;
             text-transform: uppercase;
             letter-spacing: 2px;
-            margin-bottom: 20px;
-            opacity: 0.6;
+            margin-bottom: 30px;
+            opacity: 0.7;
         }
+
         #transcript {
             font-size: 42px; 
             font-weight: bold;
@@ -40,39 +51,74 @@
             white-space: pre-wrap;
             word-wrap: break-word;
         }
+
+        /* Giao diện nút kích hoạt bắt buộc tuân thủ quy tắc trình duyệt */
+        .start-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .start-btn {
+            padding: 20px 40px;
+            font-size: 24px;
+            font-weight: bold;
+            background-color: #00ff00;
+            color: #000;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.4);
+        }
     </style>
 </head>
 <body>
 
+    <!-- Màn hình kích hoạt bắt buộc của trình duyệt -->
+    <div id="overlay" class="start-overlay">
+        <button class="start-btn" onclick="activateSystem()">BẮT ĐẦU DỊCH 🎙️</button>
+    </div>
+
     <div class="hud-container">
         <h2>• LIVE TRANSLATE •</h2>
-        <div id="transcript">Đang kết nối micro...</div>
+        <div id="transcript">Hệ thống đã sẵn sàng. Hãy nói...</div>
     </div>
 
     <script>
         const transcriptDiv = document.getElementById('transcript');
+        const overlay = document.getElementById('overlay');
         let recognition;
-        let isListening = false;
+        let isSystemRunning = false;
+
+        // Bắt buộc kích hoạt qua hành động nhấn nút của người dùng
+        function activateSystem() {
+            overlay.style.display = 'none'; // Ẩn màn hình chờ đi
+            isSystemRunning = true;
+            initSpeech();
+        }
 
         function initSpeech() {
+            if (!isSystemRunning) return;
+
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                transcriptDiv.innerText = "Trình duyệt không hỗ trợ nhận diện giọng nói.";
+                transcriptDiv.style.color = "#ff3333";
+                transcriptDiv.style.textShadow = "none";
+                transcriptDiv.innerText = "Trình duyệt không hỗ trợ Web Speech API.";
                 return;
             }
 
             recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.continuous = false; // Đổi thành false để tránh lỗi nghẽn buffer trên một số trình duyệt
+            recognition.lang = 'en-US'; // Ngôn ngữ nhận diện đầu vào: Tiếng Anh
+            recognition.continuous = false; // Thiết lập false để ngắt câu ngắn gọn giúp đẩy API dịch nhanh
             recognition.interimResults = true;
 
             recognition.onstart = function() {
-                isListening = true;
-                if (transcriptDiv.innerText === "Đang kết nối micro..." || transcriptDiv.innerText.includes("Lỗi")) {
-                    transcriptDiv.style.color = "#888888";
-                    transcriptDiv.style.textShadow = "none";
-                    transcriptDiv.innerText = "Listening... 🎙️";
-                }
+                console.log("Micro đang lắng nghe...");
             };
 
             recognition.onresult = function(event) {
@@ -102,36 +148,46 @@
                 try {
                     const res = await fetch(`https://translated.net{encodeURIComponent(text)}&langpair=en|vi`);
                     const data = await res.json();
+                    
                     transcriptDiv.style.color = "#00ff00";
                     transcriptDiv.style.textShadow = "0 0 12px rgba(0, 255, 0, 0.6)";
                     transcriptDiv.innerText = data.responseData.translatedText;
                 } catch (error) {
-                    console.log("Lỗi dịch thuật");
+                    console.log("Lỗi kết nối dịch thuật công cộng.");
                 }
             }
 
             recognition.onerror = function(event) {
-                console.log("Speech error:", event.error);
-                // Nếu bị hủy (aborted) hoặc không nghe thấy (no-speech), ép hệ thống chạy lại ngay
+                console.log("Speech Error:", event.error);
+                // Xử lý triệt để trạng thái lỗi 'aborted' hoặc 'no-speech'
                 if (event.error === 'aborted' || event.error === 'no-speech') {
-                    isListening = false;
+                    // Không báo lỗi đỏ lên màn hình kính HUD, âm thầm chuẩn bị khởi động lại
+                } else if (event.error === 'not-allowed') {
+                    transcriptDiv.style.color = "#ff3333";
+                    transcriptDiv.innerText = "Lỗi: Hãy cấp quyền Micro cho trình duyệt!";
+                    isSystemRunning = false; 
                 }
             };
 
             recognition.onend = function() {
-                isListening = false;
-                // Tự động kích hoạt lại sau 300ms bất kể lý do tắt là gì
-                setTimeout(() => {
-                    if (!isListening) {
-                        try { recognition.start(); } catch(e) {}
-                    }
-                }, 300);
+                // Khi micro dừng tự nhiên hoặc bị ép dừng, khởi động lại ngay sau 200ms để dịch liên tục
+                if (isSystemRunning) {
+                    setTimeout(() => {
+                        try {
+                            recognition.start();
+                        } catch (e) {
+                            console.log("Đang thử kết nối lại micro...");
+                        }
+                    }, 200);
+                }
             };
 
-            try { recognition.start(); } catch(e) {}
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error("Không thể khởi động Microphone ban đầu:", e);
+            }
         }
-
-        window.addEventListener('DOMContentLoaded', initSpeech);
     </script>
 </body>
 </html>
